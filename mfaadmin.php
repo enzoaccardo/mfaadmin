@@ -1,0 +1,349 @@
+<?php
+
+declare(strict_types=1);
+
+if (!defined('_PS_VERSION_')) {
+    exit;
+}
+
+if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+    require_once __DIR__ . '/vendor/autoload.php';
+}
+
+class Mfaadmin extends Module
+{
+    /** Prefisso chiave sessione per stato MFA verificato */
+    private const SESSION_PREFIX = '_mfaadmin_verified_';
+
+    /** Controller MFA: esclusi dal redirect forzato */
+    private const MFA_CONTROLLERS = [
+        'AdminMfaVerify',
+        'AdminMfaSetup',
+        'AdminMfaRecover',
+        'AdminMfaCodes',
+        'AdminMfaPasskeyAjax',
+        'AdminMfaProfile',
+        'AdminMfaConfig',
+        'AdminLogin',
+    ];
+
+    public function __construct()
+    {
+        $this->name    = 'mfaadmin';
+        $this->tab     = 'administration';
+        $this->version = '1.0.0';
+        $this->author  = 'Vincenzo Accardo';
+        $this->need_instance = 0;
+        $this->bootstrap     = true;
+
+        parent::__construct();
+
+        $this->displayName = $this->l('Admin MFA & Passkey');
+        $this->description = $this->l('Autenticazione a due fattori (TOTP + Passkey WebAuthn) per l\'area admin.');
+        $this->ps_versions_compliancy = ['min' => '8.0.0', 'max' => _PS_VERSION_];
+    }
+
+    // -------------------------------------------------------------------------
+    // Install / Uninstall
+    // -------------------------------------------------------------------------
+
+    public function install(): bool
+    {
+        return parent::install()
+            && $this->installDb()
+            && $this->registerHook('actionAdminControllerInitBefore')
+            && $this->registerHook('displayBackOfficeHeader')
+            && $this->registerHook('displayAdminAfterHeader')
+            && $this->registerHook('displayAdminNavBarBeforeEnd')
+            && $this->installTabs();
+    }
+
+    public function uninstall(): bool
+    {
+        return parent::uninstall()
+            && $this->uninstallDb()
+            && $this->uninstallTabs();
+    }
+
+    private function installDb(): bool
+    {
+        $sql = file_get_contents(__DIR__ . '/sql/install.sql');
+        $sql = str_replace('PREFIX_', _DB_PREFIX_, $sql);
+
+        foreach (array_filter(array_map('trim', explode(';', $sql))) as $query) {
+            if (!Db::getInstance()->execute($query)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function uninstallDb(): bool
+    {
+        $sql = file_get_contents(__DIR__ . '/sql/uninstall.sql');
+        $sql = str_replace('PREFIX_', _DB_PREFIX_, $sql);
+
+        foreach (array_filter(array_map('trim', explode(';', $sql))) as $query) {
+            if (!Db::getInstance()->execute($query)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function installTabs(): bool
+    {
+        $tabs = [
+            // Nascosti: endpoint interni non accessibili dal menu
+            'AdminMfaVerify'      => ['name' => 'MFA Verify',       'parent' => -1,                       'icon' => ''],
+            'AdminMfaSetup'       => ['name' => 'MFA Setup',        'parent' => -1,                       'icon' => ''],
+            'AdminMfaRecover'     => ['name' => 'MFA Recovery',     'parent' => -1,                       'icon' => ''],
+            'AdminMfaCodes'       => ['name' => 'MFA Codes',        'parent' => -1,                       'icon' => ''],
+            'AdminMfaPasskeyAjax' => ['name' => 'MFA Passkey Ajax', 'parent' => -1,                       'icon' => ''],
+            // Visibili nel menu laterale
+            'AdminMfaProfile'     => ['name' => 'Profilo MFA',      'parent' => 'AdminParentEmployees',   'icon' => 'security'],
+            'AdminMfaConfig'      => ['name' => 'Configurazione MFA', 'parent' => 'AdminAdvancedParameters', 'icon' => 'security'],
+        ];
+
+        foreach ($tabs as $className => $config) {
+            if (Tab::getIdFromClassName($className)) {
+                continue;
+            }
+
+            $parentId = $config['parent'];
+            if (is_string($parentId)) {
+                $parentId = (int) Tab::getIdFromClassName($parentId) ?: -1;
+            }
+
+            $tab = new Tab();
+            $tab->class_name = $className;
+            $tab->module     = $this->name;
+            $tab->id_parent  = $parentId;
+            $tab->icon       = $config['icon'];
+
+            foreach (Language::getLanguages(false) as $lang) {
+                $tab->name[$lang['id_lang']] = $config['name'];
+            }
+
+            if (!$tab->add()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function migrateTabs(): void
+    {
+        $migrate = [
+            'AdminMfaProfile' => ['parent' => 'AdminParentEmployees',    'icon' => 'security', 'name' => 'Profilo MFA'],
+            'AdminMfaConfig'  => ['parent' => 'AdminAdvancedParameters', 'icon' => 'security', 'name' => 'Configurazione MFA'],
+        ];
+
+        foreach ($migrate as $className => $config) {
+            $tabId = (int) Tab::getIdFromClassName($className);
+            if (!$tabId) {
+                continue;
+            }
+
+            $parentId = (int) Tab::getIdFromClassName($config['parent']) ?: -1;
+
+            $tab = new Tab($tabId);
+            $tab->id_parent = $parentId;
+            $tab->icon      = $config['icon'];
+
+            foreach (Language::getLanguages(false) as $lang) {
+                $tab->name[$lang['id_lang']] = $config['name'];
+            }
+
+            $tab->update();
+        }
+    }
+
+    private function uninstallTabs(): bool
+    {
+        $controllers = ['AdminMfaConfig', 'AdminMfaVerify', 'AdminMfaSetup', 'AdminMfaRecover', 'AdminMfaCodes', 'AdminMfaPasskeyAjax', 'AdminMfaProfile'];
+
+        foreach ($controllers as $className) {
+            $idTab = (int) Tab::getIdFromClassName($className);
+            if ($idTab) {
+                (new Tab($idTab))->delete();
+            }
+        }
+
+        return true;
+    }
+
+    // -------------------------------------------------------------------------
+    // Hook: intercetta ogni controller admin
+    // -------------------------------------------------------------------------
+
+    public function hookActionAdminControllerInitBefore(array $params): void
+    {
+        // Auto-registra hook aggiunti dopo l'installazione
+        if (!Configuration::get('MFAADMIN_HOOKED_V3')) {
+            $this->registerHook('displayAdminNavBarBeforeEnd');
+            $this->registerHook('displayAdminAfterHeader');
+            Configuration::updateValue('MFAADMIN_HOOKED_V3', 1);
+        }
+
+        // Migra i tab esistenti al parent corretto (installazioni precedenti avevano id_parent = -1)
+        if (!Configuration::get('MFAADMIN_TAB_V2')) {
+            $this->migrateTabs();
+            Configuration::updateValue('MFAADMIN_TAB_V2', 1);
+        }
+
+        $context = Context::getContext();
+
+        // Nessun employee loggato → nulla da fare
+        if (!$context->employee || !(int) $context->employee->id) {
+            return;
+        }
+
+        $currentController = (string) Tools::getValue('controller');
+
+        // I controller MFA sono sempre accessibili
+        if (in_array($currentController, self::MFA_CONTROLLERS, true)) {
+            return;
+        }
+
+        $employeeId = (int) $context->employee->id;
+
+        if (self::isMfaVerified($employeeId)) {
+            return;
+        }
+
+        $mfa      = EmployeeMfa::getByEmployeeId($employeeId);
+        $forceAll = (bool) Configuration::get('MFAADMIN_REQUIRED');
+
+        // Né MFA personale attivo né globale → nulla da fare
+        if (!$forceAll && (!$mfa || !$mfa->mfa_enabled)) {
+            unset($_SESSION['_mfaadmin_show_setup_modal']);
+            return;
+        }
+
+        // MFA richiesto, setup già fatto ma non verificato in sessione → redirect a verifica
+        if ($mfa && $mfa->mfa_secret) {
+            Tools::redirectAdmin($context->link->getAdminLink('AdminMfaVerify'));
+        }
+
+        // Setup non ancora fatto → mostra modal inline sulla pagina corrente
+        $_SESSION['_mfaadmin_show_setup_modal'] = true;
+    }
+
+    public function getContent(): void
+    {
+        Tools::redirectAdmin(Context::getContext()->link->getAdminLink('AdminMfaConfig'));
+    }
+
+    public function hookDisplayAdminNavBarBeforeEnd(array $params): string
+    {
+        return '';
+    }
+
+    public function hookDisplayAdminAfterHeader(array $params): string
+    {
+        $employeeId = (int) ($this->context->employee->id ?? 0);
+        if (!$employeeId) {
+            return '';
+        }
+
+        $mfa     = EmployeeMfa::getByEmployeeId($employeeId);
+        $isSetup = $mfa && $mfa->mfa_enabled && $mfa->mfa_secret;
+
+        // A questo punto del layout (line 127 di layout.tpl) header e nav sono gia' nel DOM.
+        // 1) Sidebar: aggiunge voce in .main-menu se il tab PS non compare ancora per cache
+        // 2) Topbar: inserisce dropdown-item prima di #header_logout
+        $data = json_encode([
+            'url'   => $this->context->link->getAdminLink('AdminMfaProfile'),
+            'label' => $isSetup ? 'Impostazioni MFA' : 'Configura MFA',
+            'color' => $isSetup ? '#25b9d7' : '#f39c12',
+        ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+
+        return '<script>(function(){'
+            . 'var d=' . $data . ';'
+
+            // Sidebar: inietta solo se la voce non e' gia' presente (tab PS non ancora in cache)
+            . 'var menu=document.querySelector(".nav-bar-overflow .main-menu");'
+            . 'if(menu&&!document.getElementById("mfa-nav-item")){'
+            .   'var li=document.createElement("li");li.id="mfa-nav-item";li.className="link-levelone";'
+            .   'var na=document.createElement("a");na.href=d.url;na.className="link";'
+            .   'var ni=document.createElement("i");ni.className="material-icons";ni.style.color=d.color;ni.textContent="security";'
+            .   'var ns=document.createElement("span");ns.textContent=d.label;'
+            .   'na.appendChild(ni);na.appendChild(ns);li.appendChild(na);menu.appendChild(li);'
+            . '}'
+
+            // Topbar: inserisce dropdown-item prima del pulsante di logout
+            . 'var lo=document.getElementById("header_logout");'
+            . 'if(lo&&lo.parentNode){'
+            .   'var sep=document.createElement("p");sep.className="divider";'
+            .   'var a=document.createElement("a");a.href=d.url;a.className="dropdown-item employee-link";'
+            .   'a.innerHTML=\'<i class="material-icons" style="color:\'+d.color+\'">security</i> \'+d.label;'
+            .   'lo.parentNode.insertBefore(sep,lo);lo.parentNode.insertBefore(a,sep);'
+            . '}'
+
+            . '})();</script>';
+    }
+
+    public function hookDisplayBackOfficeHeader(array $params): string
+    {
+        if (empty($_SESSION['_mfaadmin_show_setup_modal'])) {
+            return '';
+        }
+
+        $employeeId = (int) ($this->context->employee->id ?? 0);
+        if (!$employeeId) {
+            return '';
+        }
+
+        $mfaService = new MfaService();
+        $secret = $_SESSION['_mfaadmin_temp_secret'] ?? $mfaService->generateSecret();
+        $_SESSION['_mfaadmin_temp_secret'] = $secret;
+
+        $uri = $mfaService->getQrCodeUri((string) $this->context->employee->email, $secret);
+        $svg = $mfaService->getQrCodeSvg($uri);
+
+        if (isset($this->context->controller)) {
+            $this->context->controller->addJS($this->getPathUri() . 'views/js/setup-modal.js');
+        }
+
+        return '<script>window.mfaSetupData = ' . json_encode([
+            'qrSvg'    => $svg,
+            'secret'   => $secret,
+            'ajaxUrl'  => $this->context->link->getAdminLink('AdminMfaPasskeyAjax'),
+            'codesUrl' => $this->context->link->getAdminLink('AdminMfaCodes'),
+        ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ';</script>';
+    }
+
+    // -------------------------------------------------------------------------
+    // API pubblica (usata dai controller)
+    // -------------------------------------------------------------------------
+
+    public static function setMfaVerified(int $employeeId): void
+    {
+        // Usa il cookie PS8 (distrutto al logout) invece di $_SESSION (che persiste tra logout/login)
+        $cookie = Context::getContext()->cookie;
+        $cookie->{self::SESSION_PREFIX . $employeeId} = time();
+        $cookie->write();
+    }
+
+    public static function isMfaVerified(int $employeeId): bool
+    {
+        // L'employee deve essere loggato e il suo ID deve corrispondere a quello richiesto
+        $contextId = (int) (Context::getContext()->employee->id ?? 0);
+        if (!$contextId || $contextId !== $employeeId) {
+            return false;
+        }
+
+        return !empty(Context::getContext()->cookie->{self::SESSION_PREFIX . $employeeId});
+    }
+
+    public static function clearMfaVerified(int $employeeId): void
+    {
+        $cookie = Context::getContext()->cookie;
+        $cookie->{self::SESSION_PREFIX . $employeeId} = '';
+        $cookie->write();
+    }
+}

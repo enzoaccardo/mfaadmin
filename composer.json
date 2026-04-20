@@ -1,0 +1,26 @@
+{
+    "name": "enzoaccardo/mfaadmin",
+    "description": "Admin MFA & Passkey per PrestaShop 8",
+    "type": "prestashop-module",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.1",
+        "pragmarx/google2fa": "^9.0",
+        "bacon/bacon-qr-code": "^2.0",
+        "web-auth/webauthn-lib": "^4.8"
+    },
+    "autoload": {
+        "classmap": [
+            "classes/"
+        ]
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "platform-check": false,
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "platform": {
+            "php": "8.1.0"
+        }
+    }
+}
