@@ -37,6 +37,8 @@ class AdminMfaCodesController extends ModuleAdminController
         $this->context->smarty->assign([
             'recovery_codes'  => $codes,
             'form_action'     => $this->context->link->getAdminLink('AdminMfaCodes'),
+            'card_max_width'  => '540px',
+            'module_dir'      => $this->module->getPathUri(),
             'shop_name'       => Configuration::get('PS_SHOP_NAME'),
             'shop_logo_url'   => $logo ? Tools::getShopDomainSsl(true) . __PS_BASE_URI__ . 'img/' . $logo : '',
             'admin_theme_url' => Tools::getShopDomainSsl(true) . __PS_BASE_URI__ . basename(_PS_ADMIN_DIR_) . '/themes/default/public/',

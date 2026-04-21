@@ -11,10 +11,19 @@ if (!defined('_PS_VERSION_')) {
  */
 class AdminMfaSetupController extends ModuleAdminController
 {
+    private ?string $setupError = null;
+
     public function __construct()
     {
         parent::__construct();
         $this->bootstrap = true;
+    }
+
+    public function postProcess(): void
+    {
+        if (Tools::isSubmit('submitMfaSetup')) {
+            $this->processSetup();
+        }
     }
 
     public function initContent(): void
@@ -43,10 +52,12 @@ class AdminMfaSetupController extends ModuleAdminController
 
         $logo = Configuration::get('PS_LOGO');
         $this->context->smarty->assign([
-            'mfa_error'       => $this->getAndClearFlash('mfa_error'),
+            'mfa_error'       => $this->setupError,
             'qr_svg'          => $svg,
             'mfa_secret'      => $secret,
             'form_action'     => $this->context->link->getAdminLink('AdminMfaSetup'),
+            'card_max_width'  => '520px',
+            'module_dir'      => $this->module->getPathUri(),
             'shop_name'       => Configuration::get('PS_SHOP_NAME'),
             'shop_logo_url'   => $logo ? Tools::getShopDomainSsl(true) . __PS_BASE_URI__ . 'img/' . $logo : '',
             'admin_theme_url' => Tools::getShopDomainSsl(true) . __PS_BASE_URI__ . basename(_PS_ADMIN_DIR_) . '/themes/default/public/',
@@ -58,13 +69,6 @@ class AdminMfaSetupController extends ModuleAdminController
         $this->context->smarty->addTemplateDir(_PS_MODULE_DIR_ . 'mfaadmin/views/templates/admin/');
         echo $this->context->smarty->fetch('setup.tpl');
         exit;
-    }
-
-    public function postProcess(): void
-    {
-        if (Tools::isSubmit('submitMfaSetup')) {
-            $this->processSetup();
-        }
     }
 
     private function processSetup(): void
@@ -79,8 +83,8 @@ class AdminMfaSetupController extends ModuleAdminController
         $code   = trim((string) Tools::getValue('code', ''));
 
         if (!$secret || !(new MfaService())->verifyCode($secret, $code)) {
-            $this->setFlash('mfa_error', 'Codice non valido. Assicurati di aver scansionato correttamente il QR.');
-            Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaSetup'));
+            $this->setupError = 'Codice non valido. Assicurati di aver scansionato correttamente il QR.';
+            return;
         }
 
         // Salva secret e abilita MFA
@@ -103,19 +107,5 @@ class AdminMfaSetupController extends ModuleAdminController
     private function getEmployeeId(): int
     {
         return (int) ($this->context->employee->id ?? 0);
-    }
-
-    private function setFlash(string $key, string $value): void
-    {
-        $_SESSION['_mfaadmin_flash_' . $key] = $value;
-    }
-
-    private function getAndClearFlash(string $key): ?string
-    {
-        $sessionKey = '_mfaadmin_flash_' . $key;
-        $value = $_SESSION[$sessionKey] ?? null;
-        unset($_SESSION[$sessionKey]);
-
-        return $value;
     }
 }

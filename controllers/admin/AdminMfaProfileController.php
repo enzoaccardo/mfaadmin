@@ -20,32 +20,6 @@ class AdminMfaProfileController extends ModuleAdminController
         $this->bootstrap = true;
     }
 
-    public function initContent(): void
-    {
-        $employeeId = $this->getVerifiedEmployeeId();
-
-        $mfa           = EmployeeMfa::getByEmployeeId($employeeId);
-        $passkeys      = EmployeePasskey::getByEmployeeId($employeeId);
-        $recoveryCodes = $mfa ? EmployeeRecoveryCode::countAvailable($employeeId) : 0;
-        $passkeyAjaxUrl = $this->context->link->getAdminLink('AdminMfaPasskeyAjax');
-
-        $this->context->smarty->assign([
-            'mfa_enabled'         => $mfa && $mfa->mfa_enabled,
-            'mfa_has_secret'      => $mfa && !empty($mfa->mfa_secret),
-            'recovery_codes_count' => $recoveryCodes,
-            'passkeys'            => $passkeys,
-            'passkey_ajax_url'    => $passkeyAjaxUrl,
-            'form_action'         => $this->context->link->getAdminLink('AdminMfaProfile'),
-            'mfa_success'         => $this->getAndClearFlash('mfa_success'),
-            'mfa_error'           => $this->getAndClearFlash('mfa_error'),
-        ]);
-
-        $this->addJS($this->module->getPathUri() . 'views/js/passkey-register.js');
-
-        $this->context->smarty->addTemplateDir(_PS_MODULE_DIR_ . 'mfaadmin/views/templates/admin/');
-        $this->setTemplate('profile.tpl');
-    }
-
     public function postProcess(): void
     {
         if (Tools::isSubmit('submitDisableMfa')) {
@@ -54,12 +28,43 @@ class AdminMfaProfileController extends ModuleAdminController
             $this->processRegenerateCodes();
         } elseif (Tools::isSubmit('submitEnableMfa')) {
             $this->processEnableMfa();
+        } elseif (Tools::isSubmit('submitClearNewCodes')) {
+            unset($_SESSION['_mfaadmin_new_codes_show']);
+            Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaProfile'));
         }
+    }
+
+    public function initContent(): void
+    {
+        parent::initContent();
+
+        $employeeId = $this->getVerifiedEmployeeId();
+
+        $mfa           = EmployeeMfa::getByEmployeeId($employeeId);
+        $passkeys      = EmployeePasskey::getByEmployeeId($employeeId);
+        $recoveryCodes = $mfa ? EmployeeRecoveryCode::countAvailable($employeeId) : 0;
+
+        $this->context->smarty->assign([
+            'mfa_enabled'          => $mfa && $mfa->mfa_enabled,
+            'recovery_codes_count' => $recoveryCodes,
+            'passkeys'             => $passkeys,
+            'passkey_ajax_url'     => $this->context->link->getAdminLink('AdminMfaPasskeyAjax'),
+            'form_action'          => $this->context->link->getAdminLink('AdminMfaProfile'),
+            'mfa_new_codes'        => $_SESSION['_mfaadmin_new_codes_show'] ?? [],
+            'mfa_success'          => $this->getAndClearFlash('mfa_success'),
+            'mfa_error'            => $this->getAndClearFlash('mfa_error'),
+            'module_dir'           => $this->module->getPathUri(),
+        ]);
+
+        $this->addCSS($this->module->getPathUri() . 'views/css/mfa-profile.css');
+        $this->addJS($this->module->getPathUri() . 'views/js/passkey-register.js');
+
+        $this->context->smarty->addTemplateDir(_PS_MODULE_DIR_ . 'mfaadmin/views/templates/admin/');
+        $this->setTemplate('profile.tpl');
     }
 
     private function processEnableMfa(): void
     {
-        $employeeId = $this->getVerifiedEmployeeId();
         Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaSetup'));
     }
 
@@ -98,10 +103,9 @@ class AdminMfaProfileController extends ModuleAdminController
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaProfile'));
         }
 
-        $codes = (new MfaService())->generateRecoveryCodes($employeeId);
-        $_SESSION['_mfaadmin_recovery_codes'] = $codes;
+        $_SESSION['_mfaadmin_new_codes_show'] = (new MfaService())->generateRecoveryCodes($employeeId);
 
-        Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaCodes'));
+        Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaProfile'));
     }
 
     private function getVerifiedEmployeeId(): int
@@ -114,12 +118,10 @@ class AdminMfaProfileController extends ModuleAdminController
 
         $mfa = EmployeeMfa::getByEmployeeId($id);
 
-        // MFA non ancora abilitato → accesso libero per configurarlo
         if (!$mfa || !$mfa->mfa_enabled) {
             return $id;
         }
 
-        // MFA abilitato ma non verificato in questa sessione
         if (!Mfaadmin::isMfaVerified($id)) {
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaVerify'));
         }
@@ -135,9 +137,8 @@ class AdminMfaProfileController extends ModuleAdminController
     private function getAndClearFlash(string $key): ?string
     {
         $sessionKey = '_mfaadmin_flash_' . $key;
-        $value = $_SESSION[$sessionKey] ?? null;
+        $value      = $_SESSION[$sessionKey] ?? null;
         unset($_SESSION[$sessionKey]);
-
         return $value;
     }
 }

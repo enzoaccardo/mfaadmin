@@ -15,6 +15,30 @@
     </div>
     <div class="panel-body">
         <form method="post" action="{$form_action|escape:'html'}">
+            {* — Disabilita MFA globalmente — *}
+            <div class="form-group">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox" name="mfa_disabled" value="1" {if $mfa_disabled}checked{/if}>
+                        <strong style="color:#c0392b">{l s='Disabilita verifica MFA per tutti' mod='mfaadmin'}</strong>
+                    </label>
+                </div>
+                {if $mfa_disabled}
+                <div class="alert alert-warning" style="margin-top:6px">
+                    <i class="icon-warning-sign"></i>
+                    <strong>{l s='Attenzione: la verifica MFA è attualmente disabilitata.' mod='mfaadmin'}</strong>
+                    {l s='Nessun utente viene fermato al login, indipendentemente dal proprio setup MFA.' mod='mfaadmin'}
+                </div>
+                {else}
+                <p class="help-block">
+                    {l s='Se attivo, bypassa completamente tutti i controlli MFA. Utile in emergenza o durante la manutenzione.' mod='mfaadmin'}
+                </p>
+                {/if}
+            </div>
+
+            <hr>
+
+            {* — MFA obbligatorio — *}
             <div class="form-group">
                 <div class="checkbox">
                     <label>
@@ -26,6 +50,25 @@
                     {l s='Se attivo, ogni admin viene reindirizzato al setup MFA se non lo ha ancora configurato.' mod='mfaadmin'}
                 </p>
             </div>
+
+            <hr>
+
+            {* — Whitelist controller (bypass MFA) — *}
+            <div class="form-group">
+                <label class="control-label">
+                    <strong>{l s='Controller esclusi dalla verifica MFA' mod='mfaadmin'}</strong>
+                </label>
+                <textarea name="bypass_controllers" class="form-control" rows="5"
+                          placeholder="AdminMyCronController, AdminMyWebhookController"
+                >{$bypass_controllers|escape:'html'}</textarea>
+                <p class="help-block">
+                    {l s='Elenco di controller admin (separati da virgola) che bypassano la verifica MFA. Utile per i cron job.' mod='mfaadmin'}
+                    <br>
+                    {l s='I seguenti controller interni sono sempre esclusi e non vanno inseriti qui:' mod='mfaadmin'}
+                    <code style="display:block;margin-top:4px;font-size:11px">{$mfa_core_controllers|escape:'html'}</code>
+                </p>
+            </div>
+
             <button type="submit" name="submitMfaConfig" class="btn btn-primary">
                 <i class="icon-save"></i> {l s='Salva impostazioni' mod='mfaadmin'}
             </button>

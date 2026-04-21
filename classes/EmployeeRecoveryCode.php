@@ -35,7 +35,8 @@ class EmployeeRecoveryCode extends ObjectModel
     {
         return (int) Db::getInstance()->getValue(
             'SELECT COUNT(*) FROM `' . _DB_PREFIX_ . 'employee_recovery_code`
-             WHERE `id_employee` = ' . $employeeId . ' AND `used_at` IS NULL'
+             WHERE `id_employee` = ' . $employeeId . '
+               AND (`used_at` IS NULL OR `used_at` = \'0000-00-00 00:00:00\')'
         );
     }
 
@@ -55,7 +56,8 @@ class EmployeeRecoveryCode extends ObjectModel
         return Db::getInstance()->executeS(
             'SELECT `id_recovery_code`, `code_hash`
              FROM `' . _DB_PREFIX_ . 'employee_recovery_code`
-             WHERE `id_employee` = ' . $employeeId . ' AND `used_at` IS NULL'
+             WHERE `id_employee` = ' . $employeeId . '
+               AND (`used_at` IS NULL OR `used_at` = \'0000-00-00 00:00:00\')'
         ) ?: [];
     }
 }

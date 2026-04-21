@@ -3,83 +3,6 @@
 {block name=page_title}Verifica identità{/block}
 {block name=card_icon}security{/block}
 {block name=card_title}Verifica identità{/block}
-{block name=card_max_width}500px{/block}
-
-{block name=extra_styles}
-    .otp-wrap {
-        display: flex;
-        gap: .6rem;
-        justify-content: center;
-        margin-bottom: 1.5rem;
-    }
-    .otp-digit {
-        width: 52px;
-        height: 62px;
-        font-size: 1.75rem;
-        font-weight: 700;
-        text-align: center;
-        border: 2px solid #dee2e6;
-        border-radius: 8px;
-        outline: none;
-        transition: border-color .15s, box-shadow .15s;
-        caret-color: transparent;
-        font-family: 'SFMono-Regular', 'Courier New', monospace;
-        color: #363a41;
-    }
-    .otp-digit:focus {
-        border-color: #25b9d7;
-        box-shadow: 0 0 0 .2rem rgba(37,185,215,.2);
-    }
-    .otp-digit.is-filled {
-        border-color: #25b9d7;
-        background: #f0fbfe;
-    }
-    @media (max-width: 400px) {
-        .otp-digit { width: 42px; height: 52px; font-size: 1.4rem; }
-        .otp-wrap  { gap: .4rem; }
-    }
-    .btn-verify {
-        background: linear-gradient(135deg, #25b9d7 0%, #1a9dba 100%);
-        border: none;
-        color: #fff;
-        border-radius: 8px;
-        padding: .7rem 1.25rem;
-        font-size: .95rem;
-        font-weight: 600;
-        letter-spacing: .02em;
-        transition: opacity .15s, transform .1s;
-        box-shadow: 0 3px 10px rgba(37,185,215,.35);
-    }
-    .btn-verify:hover  { opacity: .92; transform: translateY(-1px); color: #fff; }
-    .btn-verify:active { opacity: 1;   transform: translateY(0);    color: #fff; }
-    .btn-verify:disabled { opacity: .6; transform: none; cursor: not-allowed; }
-    .btn-passkey {
-        border: 2px solid #dee2e6;
-        background: #fff;
-        color: #363a41;
-        border-radius: 8px;
-        padding: .6rem 1.25rem;
-        font-size: .9rem;
-        font-weight: 500;
-        transition: border-color .15s, box-shadow .15s;
-    }
-    .btn-passkey:hover {
-        border-color: #25b9d7;
-        box-shadow: 0 0 0 .15rem rgba(37,185,215,.15);
-        color: #1a9dba;
-    }
-    .btn-recovery {
-        background: none;
-        border: none;
-        color: #9099a2;
-        font-size: .82rem;
-        padding: .35rem .5rem;
-        cursor: pointer;
-        text-decoration: none;
-        transition: color .15s;
-    }
-    .btn-recovery:hover { color: #25b9d7; text-decoration: none; }
-{/block}
 
 {block name=content}
     {if $mfa_error}
@@ -107,7 +30,7 @@
             <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" autocomplete="off" pattern="[0-9]" tabindex="6">
         </div>
 
-        <button type="submit" class="btn btn-verify btn-block" id="btn-verify" disabled>
+        <button type="submit" class="btn btn-verify btn-block" id="btn-verify">
             <i class="material-icons mr-1" style="font-size:1.05rem;vertical-align:middle">check_circle</i>
             Verifica e accedi
         </button>
@@ -135,77 +58,60 @@
 {block name=scripts}
     <script>
         (function () {
-            var digits  = Array.from(document.querySelectorAll('.otp-digit'));
-            var hidden  = document.getElementById('otp-hidden');
-            var form    = document.getElementById('totp-form');
-            var btnVerify = document.getElementById('btn-verify');
+            var digits = Array.from(document.querySelectorAll('.otp-digit'));
+            var hidden = document.getElementById('otp-hidden');
+            var form   = document.getElementById('totp-form');
 
-            function updateHidden() {
-                var val = digits.map(function (d) { return d.value; }).join('');
-                hidden.value = val;
-                var complete = val.length === 6 && /^\d{6}$/.test(val);
-                btnVerify.disabled = !complete;
+            function syncHidden() {
+                hidden.value = digits.map(function (d) { return d.value; }).join('');
                 digits.forEach(function (d) {
                     d.classList.toggle('is-filled', d.value !== '');
                 });
-                return complete;
+                return /^\d{6}$/.test(hidden.value);
             }
 
             function focusIndex(i) {
                 if (i >= 0 && i < digits.length) { digits[i].focus(); }
             }
 
+            form.addEventListener('submit', function (e) {
+                if (!syncHidden()) { e.preventDefault(); digits[0].focus(); }
+            });
+
             digits.forEach(function (input, idx) {
                 input.addEventListener('focus', function () { this.select(); });
-
                 input.addEventListener('keydown', function (e) {
                     if (e.key === 'Backspace') {
-                        if (this.value === '' && idx > 0) {
-                            digits[idx - 1].value = '';
-                            focusIndex(idx - 1);
-                        } else {
-                            this.value = '';
-                        }
-                        updateHidden();
-                        e.preventDefault();
-                        return;
+                        if (this.value === '' && idx > 0) { digits[idx - 1].value = ''; focusIndex(idx - 1); }
+                        else { this.value = ''; }
+                        syncHidden(); e.preventDefault(); return;
                     }
                     if (e.key === 'ArrowLeft')  { focusIndex(idx - 1); e.preventDefault(); return; }
                     if (e.key === 'ArrowRight') { focusIndex(idx + 1); e.preventDefault(); return; }
                 });
-
-                input.addEventListener('input', function (e) {
+                input.addEventListener('input', function () {
                     var val = this.value.replace(/\D/g, '');
                     if (val.length > 1) {
-                        // Gestisce incolla di più cifre in un singolo box
-                        var chars = val.split('');
-                        chars.forEach(function (ch, offset) {
-                            if (idx + offset < digits.length) {
-                                digits[idx + offset].value = ch;
-                            }
+                        val.split('').forEach(function (ch, offset) {
+                            if (idx + offset < digits.length) { digits[idx + offset].value = ch; }
                         });
-                        var next = idx + chars.length;
-                        focusIndex(Math.min(next, digits.length - 1));
+                        focusIndex(Math.min(idx + val.length, digits.length - 1));
                     } else {
                         this.value = val;
                         if (val !== '') { focusIndex(idx + 1); }
                     }
-                    if (updateHidden()) { form.submit(); }
+                    if (syncHidden()) { form.submit(); }
                 });
             });
 
-            // Gestisce incolla sull'intero form
             document.getElementById('otp-wrap').addEventListener('paste', function (e) {
                 e.preventDefault();
                 var text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
-                text.split('').slice(0, 6).forEach(function (ch, i) {
-                    digits[i].value = ch;
-                });
+                text.split('').slice(0, 6).forEach(function (ch, i) { digits[i].value = ch; });
                 focusIndex(Math.min(text.length, 5));
-                if (updateHidden()) { form.submit(); }
+                if (syncHidden()) { form.submit(); }
             });
 
-            // Primo box autofocus
             digits[0].focus();
         })();
 

@@ -17,11 +17,14 @@ class AdminMfaConfigController extends ModuleAdminController
     public function initContent(): void
     {
         $this->context->smarty->assign([
-            'employees'   => $this->getEmployeesWithMfaStatus(),
-            'force_mfa'   => (bool) Configuration::get('MFAADMIN_REQUIRED'),
-            'form_action' => $this->context->link->getAdminLink('AdminMfaConfig'),
-            'mfa_success' => $this->getAndClearFlash('mfa_success'),
-            'mfa_error'   => $this->getAndClearFlash('mfa_error'),
+            'employees'           => $this->getEmployeesWithMfaStatus(),
+            'force_mfa'           => (bool) Configuration::get('MFAADMIN_REQUIRED'),
+            'mfa_disabled'        => (bool) Configuration::get('MFAADMIN_DISABLED'),
+            'bypass_controllers'  => (string) Configuration::get('MFAADMIN_BYPASS_CONTROLLERS'),
+            'mfa_core_controllers'=> implode(', ', Mfaadmin::getWhitelistedControllers()),
+            'form_action'         => $this->context->link->getAdminLink('AdminMfaConfig'),
+            'mfa_success'         => $this->getAndClearFlash('mfa_success'),
+            'mfa_error'           => $this->getAndClearFlash('mfa_error'),
         ]);
 
         $this->context->smarty->addTemplateDir(_PS_MODULE_DIR_ . 'mfaadmin/views/templates/admin/');
@@ -40,6 +43,16 @@ class AdminMfaConfigController extends ModuleAdminController
     private function processSaveConfig(): void
     {
         Configuration::updateValue('MFAADMIN_REQUIRED', (int) (bool) Tools::getValue('force_mfa'));
+        Configuration::updateValue('MFAADMIN_DISABLED', (int) (bool) Tools::getValue('mfa_disabled'));
+
+        // Sanifica la lista bypass: solo caratteri validi per nomi controller PS (alfanumerici)
+        $raw    = (string) Tools::getValue('bypass_controllers');
+        $parsed = array_filter(array_map(
+            fn(string $c) => preg_replace('/[^a-zA-Z0-9_]/', '', trim($c)),
+            explode(',', $raw)
+        ));
+        Configuration::updateValue('MFAADMIN_BYPASS_CONTROLLERS', implode(',', $parsed));
+
         $this->setFlash('mfa_success', 'Configurazione salvata.');
         Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaConfig'));
     }

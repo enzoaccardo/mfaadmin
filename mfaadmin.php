@@ -15,7 +15,7 @@ class Mfaadmin extends Module
     /** Prefisso chiave sessione per stato MFA verificato */
     private const SESSION_PREFIX = '_mfaadmin_verified_';
 
-    /** Controller MFA: esclusi dal redirect forzato */
+    /** Controller MFA interni: sempre esclusi dal redirect, non configurabili */
     private const MFA_CONTROLLERS = [
         'AdminMfaVerify',
         'AdminMfaSetup',
@@ -26,6 +26,22 @@ class Mfaadmin extends Module
         'AdminMfaConfig',
         'AdminLogin',
     ];
+
+    /**
+     * Restituisce la whitelist completa: controller MFA interni + controller configurati da UI.
+     * @return string[]
+     */
+    public static function getWhitelistedControllers(): array
+    {
+        $extra = (string) Configuration::get('MFAADMIN_BYPASS_CONTROLLERS');
+        if ($extra === '') {
+            return self::MFA_CONTROLLERS;
+        }
+
+        $parsed = array_filter(array_map('trim', explode(',', $extra)));
+
+        return array_merge(self::MFA_CONTROLLERS, $parsed);
+    }
 
     public function __construct()
     {
@@ -195,6 +211,11 @@ class Mfaadmin extends Module
             Configuration::updateValue('MFAADMIN_TAB_V2', 1);
         }
 
+        // MFA globalmente disabilitato → salta qualsiasi verifica
+        if (Configuration::get('MFAADMIN_DISABLED')) {
+            return;
+        }
+
         $context = Context::getContext();
 
         // Nessun employee loggato → nulla da fare
@@ -204,14 +225,15 @@ class Mfaadmin extends Module
 
         $currentController = (string) Tools::getValue('controller');
 
-        // I controller MFA sono sempre accessibili
-        if (in_array($currentController, self::MFA_CONTROLLERS, true)) {
+        // Controller in whitelist (interni MFA + configurati da UI) → sempre accessibili
+        if (in_array($currentController, self::getWhitelistedControllers(), true)) {
             return;
         }
 
         $employeeId = (int) $context->employee->id;
 
         if (self::isMfaVerified($employeeId)) {
+            unset($_SESSION['_mfaadmin_show_setup_modal'], $_SESSION['_mfaadmin_temp_secret']);
             return;
         }
 

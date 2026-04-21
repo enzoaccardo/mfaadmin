@@ -70,11 +70,13 @@ class MfaService
 
             $codes[] = $plain;
 
-            $row = new EmployeeRecoveryCode();
-            $row->id_employee = $employeeId;
-            $row->code_hash   = password_hash($plain, PASSWORD_BCRYPT);
-            $row->date_add    = $now;
-            $row->add();
+            // Raw insert: ObjectModel serializza le date null come '0000-00-00 00:00:00',
+            // usare SQL diretto garantisce used_at = NULL.
+            Db::getInstance()->execute(
+                'INSERT INTO `' . _DB_PREFIX_ . 'employee_recovery_code`
+                 (`id_employee`, `code_hash`, `used_at`, `date_add`)
+                 VALUES (' . (int) $employeeId . ', \'' . pSQL(password_hash($plain, PASSWORD_BCRYPT)) . '\', NULL, \'' . pSQL($now) . '\')'
+            );
         }
 
         return $codes;
