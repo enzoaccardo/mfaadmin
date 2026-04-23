@@ -69,6 +69,23 @@
                 </p>
             </div>
 
+            <hr>
+
+            {* — Email di allerta sicurezza — *}
+            <div class="form-group">
+                <label class="control-label">
+                    <strong>{l s='Email di allerta sicurezza' mod='mfaadmin'}</strong>
+                </label>
+                <input type="email" name="alert_email" class="form-control" style="max-width:420px"
+                       value="{$alert_email|escape:'html'}"
+                       placeholder="{$alert_email_fallback|escape:'html'}">
+                <p class="help-block">
+                    {l s='Riceverà le notifiche di allerta MFA (avviso al 3° tentativo fallito, blocco al 5°).' mod='mfaadmin'}
+                    {l s='Se non configurato, viene usata l\'email del negozio:' mod='mfaadmin'}
+                    <strong>{$alert_email_fallback|escape:'html'}</strong>
+                </p>
+            </div>
+
             <button type="submit" name="submitMfaConfig" class="btn btn-primary">
                 <i class="icon-save"></i> {l s='Salva impostazioni' mod='mfaadmin'}
             </button>

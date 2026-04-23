@@ -368,4 +368,82 @@ class Mfaadmin extends Module
         $cookie->{self::SESSION_PREFIX . $employeeId} = '';
         $cookie->write();
     }
+
+    // -------------------------------------------------------------------------
+    // Alert email per tentativi MFA falliti
+    // -------------------------------------------------------------------------
+
+    /**
+     * Restituisce l'email di allerta configurata, con fallback su PS_SHOP_EMAIL.
+     */
+    public static function getAlertEmail(): string
+    {
+        $configured = trim((string) Configuration::get('MFAADMIN_ALERT_EMAIL'));
+        if (!empty($configured) && Validate::isEmail($configured)) {
+            return $configured;
+        }
+
+        return (string) Configuration::get('PS_SHOP_EMAIL');
+    }
+
+    /**
+     * Invia email di allerta sicurezza all'employee e all'indirizzo admin configurato.
+     *
+     * @param int    $employeeId   ID employee target
+     * @param string $type         'warning' (3° fail) | 'lockout' (5° fail)
+     * @param int    $attemptCount Numero di tentativi falliti accumulati
+     */
+    public static function sendFailAlert(int $employeeId, string $type, int $attemptCount): void
+    {
+        $employee = new Employee($employeeId);
+        if (!$employee->id) {
+            return;
+        }
+
+        $alertEmail = self::getAlertEmail();
+        $mailFolder = _PS_MODULE_DIR_ . 'mfaadmin/mails/';
+        $idLang     = (int) Configuration::get('PS_LANG_DEFAULT');
+        $template   = 'mfa_alert_' . $type;
+        $subject    = $type === 'lockout'
+            ? '[ALLERTA] Account MFA bloccato — ' . $employee->firstname . ' ' . $employee->lastname
+            : '[Sicurezza] Tentativi MFA falliti — ' . $employee->firstname . ' ' . $employee->lastname;
+
+        $templateVars = [
+            '{employee_name}'      => $employee->firstname . ' ' . $employee->lastname,
+            '{employee_email}'     => $employee->email,
+            '{attempt_count}'      => (string) $attemptCount,
+            '{remaining_attempts}' => (string) max(0, 5 - $attemptCount),
+            '{ip_address}'         => Tools::getRemoteAddr(),
+            '{user_agent}'         => htmlspecialchars($_SERVER['HTTP_USER_AGENT'] ?? 'N/D', ENT_QUOTES),
+            '{datetime}'           => date('d/m/Y H:i:s'),
+            '{shop_name}'          => (string) Configuration::get('PS_SHOP_NAME'),
+        ];
+
+        // Carica configurazione SMTP da un modulo esterno
+        $mailUpParams = null;
+        if (!class_exists('SmtpExterno')) {
+            $moduleFile = _PS_MODULE_DIR_ . 'smtpexterno/smtpexterno.php';
+            if (file_exists($moduleFile)) {
+                require_once $moduleFile;
+            }
+        }
+        if (class_exists('SmtpExterno') && method_exists('SmtpExterno', 'getSmtpConfig')) {
+            $cfg = SmtpExterno::getSmtpConfig();
+            if (!empty($cfg)) {
+                $mailUpParams = $cfg;
+            }
+        }
+
+        // Invia all'employee
+        if (!empty($employee->email) && Validate::isEmail($employee->email)) {
+            Mail::send($idLang, $template, $subject, $templateVars, $employee->email,
+                null, null, null, null, null, $mailFolder, false, null, null, null, null, $mailUpParams);
+        }
+
+        // Invia all'admin alert (se diverso dall'employee)
+        if (!empty($alertEmail) && Validate::isEmail($alertEmail) && $alertEmail !== $employee->email) {
+            Mail::send($idLang, $template, $subject, $templateVars, $alertEmail,
+                null, null, null, null, null, $mailFolder, false, null, null, null, null, $mailUpParams);
+        }
+    }
 }

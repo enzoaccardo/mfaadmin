@@ -96,16 +96,30 @@ class AdminMfaVerifyController extends ModuleAdminController
         }
 
         if (!(new MfaService())->verifyCode($mfa->mfa_secret, $code)) {
-            $remaining = 4 - $attempts;
-            $_SESSION[$attemptKey] = $attempts + 1;
+            $newAttempts = $attempts + 1;
+            $_SESSION[$attemptKey] = $newAttempts;
+            $remaining = 5 - $newAttempts;
+
+            // Warning al 3° fail (una sola volta per sessione)
+            if ($newAttempts === 3 && empty($_SESSION['_mfaadmin_warned_' . $employeeId])) {
+                $_SESSION['_mfaadmin_warned_' . $employeeId] = true;
+                Mfaadmin::sendFailAlert($employeeId, 'warning', $newAttempts);
+            }
+
+            // Lockout al 5° fail (una sola volta per sessione)
+            if ($newAttempts >= 5 && empty($_SESSION['_mfaadmin_locked_' . $employeeId])) {
+                $_SESSION['_mfaadmin_locked_' . $employeeId] = true;
+                Mfaadmin::sendFailAlert($employeeId, 'lockout', $newAttempts);
+            }
+
             $this->verifyError = $remaining > 0
                 ? 'Codice non valido o scaduto. Tentativi rimanenti: ' . $remaining . '.'
                 : 'Codice non valido. Hai esaurito i tentativi. Disconnettiti e riaccedi.';
             return;
         }
 
-        // Successo → azzera contatore e verifica
-        unset($_SESSION[$attemptKey]);
+        // Successo → azzera contatore, flag alert e verifica
+        unset($_SESSION[$attemptKey], $_SESSION['_mfaadmin_warned_' . $employeeId], $_SESSION['_mfaadmin_locked_' . $employeeId]);
         Mfaadmin::setMfaVerified($employeeId);
         Tools::redirectAdmin($this->context->link->getAdminLink('AdminDashboard'));
     }

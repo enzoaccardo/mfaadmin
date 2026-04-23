@@ -21,6 +21,8 @@ class AdminMfaConfigController extends ModuleAdminController
             'force_mfa'           => (bool) Configuration::get('MFAADMIN_REQUIRED'),
             'mfa_disabled'        => (bool) Configuration::get('MFAADMIN_DISABLED'),
             'bypass_controllers'  => (string) Configuration::get('MFAADMIN_BYPASS_CONTROLLERS'),
+            'alert_email'         => (string) Configuration::get('MFAADMIN_ALERT_EMAIL'),
+            'alert_email_fallback'=> (string) Configuration::get('PS_SHOP_EMAIL'),
             'mfa_core_controllers'=> implode(', ', Mfaadmin::getWhitelistedControllers()),
             'form_action'         => $this->context->link->getAdminLink('AdminMfaConfig'),
             'mfa_success'         => $this->getAndClearFlash('mfa_success'),
@@ -44,6 +46,9 @@ class AdminMfaConfigController extends ModuleAdminController
     {
         Configuration::updateValue('MFAADMIN_REQUIRED', (int) (bool) Tools::getValue('force_mfa'));
         Configuration::updateValue('MFAADMIN_DISABLED', (int) (bool) Tools::getValue('mfa_disabled'));
+
+        $alertEmail = trim((string) Tools::getValue('alert_email'));
+        Configuration::updateValue('MFAADMIN_ALERT_EMAIL', Validate::isEmail($alertEmail) ? $alertEmail : '');
 
         // Sanifica la lista bypass: solo caratteri validi per nomi controller PS (alfanumerici)
         $raw    = (string) Tools::getValue('bypass_controllers');
