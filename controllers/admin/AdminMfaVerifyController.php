@@ -20,6 +20,17 @@ class AdminMfaVerifyController extends ModuleAdminController
         $this->bootstrap = true;
     }
 
+    /**
+     * Pagina di gate obbligatoria per ogni employee autenticato, indipendentemente
+     * dai permessi del proprio profilo: l'ACL "legacy" di PrestaShop concede di
+     * default accesso ai soli tab creati da un modulo al profilo SuperAdmin, il
+     * che bloccherebbe qui ogni altro employee prima ancora di poter verificare l'MFA.
+     */
+    public function viewAccess($disable = false): bool
+    {
+        return true;
+    }
+
     public function postProcess(): void
     {
         if (Tools::isSubmit('submitMfaVerify')) {

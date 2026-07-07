@@ -20,6 +20,16 @@ class AdminMfaProfileController extends ModuleAdminController
         $this->bootstrap = true;
     }
 
+    /**
+     * Pagina di impostazioni personali: ogni employee deve poter gestire il
+     * proprio MFA a prescindere dai permessi ACL del proprio profilo (per
+     * default PrestaShop concede l'accesso ai tab dei moduli al solo SuperAdmin).
+     */
+    public function viewAccess($disable = false): bool
+    {
+        return true;
+    }
+
     public function postProcess(): void
     {
         if (Tools::isSubmit('submitDisableMfa')) {

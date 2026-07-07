@@ -27,6 +27,15 @@ class AdminMfaPasskeyAjaxController extends ModuleAdminController
         $this->display_footer   = false;
     }
 
+    /**
+     * Vedi AdminMfaVerifyController::viewAccess(): endpoint raggiungibile da ogni
+     * employee autenticato a prescindere dai permessi ACL del proprio profilo.
+     */
+    public function viewAccess($disable = false): bool
+    {
+        return true;
+    }
+
     public function display(): void
     {
         // Assicura che la sessione PHP nativa sia attiva (Symfony la avvia in lazy solo per le pagine)

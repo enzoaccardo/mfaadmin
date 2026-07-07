@@ -19,6 +19,15 @@ class AdminMfaRecoverController extends ModuleAdminController
         $this->bootstrap = true;
     }
 
+    /**
+     * Vedi AdminMfaVerifyController::viewAccess(): pagina raggiungibile da ogni
+     * employee autenticato a prescindere dai permessi ACL del proprio profilo.
+     */
+    public function viewAccess($disable = false): bool
+    {
+        return true;
+    }
+
     public function postProcess(): void
     {
         if (Tools::isSubmit('submitMfaRecover')) {
