@@ -1,0 +1,13 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Composer: vendor/ is intentionally committed (see README) so the module
+# works out of the box for admins who install it via zip upload without
+# running composer themselves. Only ignore local composer tooling.
+composer.phar
+
+# Note di lavoro locali, non destinate al repository pubblico
+AUDIT_REPORT.md
