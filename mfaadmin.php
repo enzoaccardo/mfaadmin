@@ -78,7 +78,22 @@ class Mfaadmin extends Module
     {
         return parent::uninstall()
             && $this->uninstallDb()
-            && $this->uninstallTabs();
+            && $this->uninstallTabs()
+            && $this->uninstallConfiguration();
+    }
+
+    private function uninstallConfiguration(): bool
+    {
+        foreach ([
+            'MFAADMIN_REQUIRED',
+            'MFAADMIN_DISABLED',
+            'MFAADMIN_BYPASS_CONTROLLERS',
+            'MFAADMIN_ALERT_EMAIL',
+        ] as $key) {
+            Configuration::deleteByName($key);
+        }
+
+        return true;
     }
 
     private function installDb(): bool
