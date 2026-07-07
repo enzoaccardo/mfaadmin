@@ -68,6 +68,7 @@ class Mfaadmin extends Module
         return parent::install()
             && $this->installDb()
             && $this->registerHook('actionAdminControllerInitBefore')
+            && $this->registerHook('actionDispatcherBefore')
             && $this->registerHook('displayBackOfficeHeader')
             && $this->registerHook('displayAdminAfterHeader')
             && $this->registerHook('displayAdminNavBarBeforeEnd')
@@ -166,33 +167,6 @@ class Mfaadmin extends Module
         return true;
     }
 
-    private function migrateTabs(): void
-    {
-        $migrate = [
-            'AdminMfaProfile' => ['parent' => 'AdminParentEmployees',    'icon' => 'security', 'name' => 'Profilo MFA'],
-            'AdminMfaConfig'  => ['parent' => 'AdminAdvancedParameters', 'icon' => 'security', 'name' => 'Configurazione MFA'],
-        ];
-
-        foreach ($migrate as $className => $config) {
-            $tabId = (int) Tab::getIdFromClassName($className);
-            if (!$tabId) {
-                continue;
-            }
-
-            $parentId = (int) Tab::getIdFromClassName($config['parent']) ?: -1;
-
-            $tab = new Tab($tabId);
-            $tab->id_parent = $parentId;
-            $tab->icon      = $config['icon'];
-
-            foreach (Language::getLanguages(false) as $lang) {
-                $tab->name[$lang['id_lang']] = $config['name'];
-            }
-
-            $tab->update();
-        }
-    }
-
     private function uninstallTabs(): bool
     {
         $controllers = ['AdminMfaConfig', 'AdminMfaVerify', 'AdminMfaSetup', 'AdminMfaRecover', 'AdminMfaCodes', 'AdminMfaPasskeyAjax', 'AdminMfaProfile'];
@@ -208,24 +182,40 @@ class Mfaadmin extends Module
     }
 
     // -------------------------------------------------------------------------
-    // Hook: intercetta ogni controller admin
+    // Hook: intercetta ogni controller admin "legacy" (AdminController)
     // -------------------------------------------------------------------------
 
     public function hookActionAdminControllerInitBefore(array $params): void
     {
-        // Auto-registra hook aggiunti dopo l'installazione
-        if (!Configuration::get('MFAADMIN_HOOKED_V3')) {
-            $this->registerHook('displayAdminNavBarBeforeEnd');
-            $this->registerHook('displayAdminAfterHeader');
-            Configuration::updateValue('MFAADMIN_HOOKED_V3', 1);
+        $this->enforceMfaGate((string) Tools::getValue('controller'));
+    }
+
+    // -------------------------------------------------------------------------
+    // Hook: intercetta le pagine admin migrate a Symfony (FrameworkBundleAdminController).
+    // Necessario perché actionAdminControllerInitBefore e' emesso solo da
+    // AdminController::init() (classes/controller/AdminController.php) e NON viene
+    // mai eseguito per i controller Symfony (es. Dashboard, Employees, Modules):
+    // senza questo hook aggiuntivo, un employee con MFA già configurato che dopo il
+    // login atterra su una pagina Symfony non verrebbe mai reindirizzato alla verifica.
+    // -------------------------------------------------------------------------
+
+    public function hookActionDispatcherBefore(array $params): void
+    {
+        // 2 = ActionDispatcherLegacyHooksSubscriber::BACK_OFFICE_CONTROLLER
+        if ((int) ($params['controller_type'] ?? 0) !== 2) {
+            return;
         }
 
-        // Migra i tab esistenti al parent corretto (installazioni precedenti avevano id_parent = -1)
-        if (!Configuration::get('MFAADMIN_TAB_V2')) {
-            $this->migrateTabs();
-            Configuration::updateValue('MFAADMIN_TAB_V2', 1);
-        }
+        // Le pagine legacy "bridged" verso Symfony mantengono ?controller=X nella query
+        // string (es. i controller di questo stesso modulo): Tools::getValue('controller')
+        // la restituisce comunque. Le pagine Symfony native (routing by path, es.
+        // /configure/advanced/employees/) non hanno questo parametro: la whitelist per
+        // nome controller semplicemente non trova corrispondenza e si passa al gate MFA.
+        $this->enforceMfaGate((string) Tools::getValue('controller'));
+    }
 
+    private function enforceMfaGate(string $currentController): void
+    {
         // MFA globalmente disabilitato → salta qualsiasi verifica
         if (Configuration::get('MFAADMIN_DISABLED')) {
             return;
@@ -238,10 +228,8 @@ class Mfaadmin extends Module
             return;
         }
 
-        $currentController = (string) Tools::getValue('controller');
-
         // Controller in whitelist (interni MFA + configurati da UI) → sempre accessibili
-        if (in_array($currentController, self::getWhitelistedControllers(), true)) {
+        if ($currentController !== '' && in_array($currentController, self::getWhitelistedControllers(), true)) {
             return;
         }
 
