@@ -1,0 +1,12 @@
+ALLERTA sicurezza MFA — {shop_name}
+
+Account MFA bloccato dopo {attempt_count} tentativi falliti.
+
+Utente: {employee_name}
+Email: {employee_email}
+IP: {ip_address}
+Browser: {user_agent}
+Data/Ora: {datetime}
+
+Per sbloccare: effettua logout e riesegui il login.
+Se non riconosci questo tentativo, reimposta le credenziali e contatta l'amministratore di sistema.

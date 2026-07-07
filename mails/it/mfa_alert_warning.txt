@@ -1,0 +1,13 @@
+Avviso sicurezza MFA — {shop_name}
+
+Sono stati rilevati {attempt_count} tentativi di accesso MFA falliti.
+
+Utente: {employee_name}
+Email: {employee_email}
+IP: {ip_address}
+Browser: {user_agent}
+Data/Ora: {datetime}
+
+Rimangono {remaining_attempts} tentativi prima del blocco automatico.
+
+Se non riconosci questo accesso, contatta immediatamente l'amministratore del sistema.

@@ -1,0 +1,16 @@
+<html>
+<body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto">
+<p style="font-size:16px">Ciao,</p>
+<p style="color:#c0392b;font-size:15px"><strong>⚠ Account MFA bloccato dopo {attempt_count} tentativi falliti.</strong></p>
+<p>L'account amministratore è stato temporaneamente bloccato a causa di troppi tentativi di autenticazione MFA falliti.</p>
+<table style="border-collapse:collapse;width:100%;margin:16px 0">
+    <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold;width:160px">Utente</td><td style="padding:6px 12px;border-bottom:1px solid #eee">{employee_name}</td></tr>
+    <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold">Email</td><td style="padding:6px 12px;border-bottom:1px solid #eee">{employee_email}</td></tr>
+    <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold">IP</td><td style="padding:6px 12px;border-bottom:1px solid #eee">{ip_address}</td></tr>
+    <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold">Browser</td><td style="padding:6px 12px;border-bottom:1px solid #eee">{user_agent}</td></tr>
+    <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold">Data/Ora</td><td style="padding:6px 12px">{datetime}</td></tr>
+</table>
+<p>Per sbloccare l'accesso è necessario effettuare il logout e rieseguire il login. Se non riconosci questo tentativo, considera di reimpostare le credenziali dell'account e di contattare l'amministratore di sistema.</p>
+<p style="color:#999;font-size:12px;margin-top:32px">{shop_name}</p>
+</body>
+</html>
