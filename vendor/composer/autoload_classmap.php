@@ -198,6 +198,7 @@ return array(
     'Lcobucci\\Clock\\Clock' => $vendorDir . '/lcobucci/clock/src/Clock.php',
     'Lcobucci\\Clock\\FrozenClock' => $vendorDir . '/lcobucci/clock/src/FrozenClock.php',
     'Lcobucci\\Clock\\SystemClock' => $vendorDir . '/lcobucci/clock/src/SystemClock.php',
+    'MfaCrypto' => $baseDir . '/classes/MfaCrypto.php',
     'MfaService' => $baseDir . '/classes/MfaService.php',
     'ParagonIE\\ConstantTime\\Base32' => $vendorDir . '/paragonie/constant_time_encoding/src/Base32.php',
     'ParagonIE\\ConstantTime\\Base32Hex' => $vendorDir . '/paragonie/constant_time_encoding/src/Base32Hex.php',
