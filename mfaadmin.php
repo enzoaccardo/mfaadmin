@@ -415,38 +415,23 @@ class Mfaadmin extends Module
             '{employee_name}'      => $employee->firstname . ' ' . $employee->lastname,
             '{employee_email}'     => $employee->email,
             '{attempt_count}'      => (string) $attemptCount,
-            '{remaining_attempts}' => (string) max(0, 5 - $attemptCount),
+            '{remaining_attempts}' => (string) max(0, EmployeeMfa::MAX_ATTEMPTS - $attemptCount),
             '{ip_address}'         => Tools::getRemoteAddr(),
             '{user_agent}'         => htmlspecialchars($_SERVER['HTTP_USER_AGENT'] ?? 'N/D', ENT_QUOTES),
             '{datetime}'           => date('d/m/Y H:i:s'),
             '{shop_name}'          => (string) Configuration::get('PS_SHOP_NAME'),
         ];
 
-        // Carica configurazione SMTP da un modulo esterno
-        $mailUpParams = null;
-        if (!class_exists('SmtpExterno')) {
-            $moduleFile = _PS_MODULE_DIR_ . 'smtpexterno/smtpexterno.php';
-            if (file_exists($moduleFile)) {
-                require_once $moduleFile;
-            }
-        }
-        if (class_exists('SmtpExterno') && method_exists('SmtpExterno', 'getSmtpConfig')) {
-            $cfg = SmtpExterno::getSmtpConfig();
-            if (!empty($cfg)) {
-                $mailUpParams = $cfg;
-            }
-        }
-
-        // Invia all'employee
+        // Invia all'employee, tramite il metodo di invio email configurato in PrestaShop
+        // (Parametri di negozio > Email). Nessuna integrazione con provider SMTP esterni:
+        // il modulo si affida esclusivamente alla configurazione mail standard di PrestaShop.
         if (!empty($employee->email) && Validate::isEmail($employee->email)) {
-            Mail::send($idLang, $template, $subject, $templateVars, $employee->email,
-                null, null, null, null, null, $mailFolder, false, null, null, null, null, $mailUpParams);
+            Mail::send($idLang, $template, $subject, $templateVars, $employee->email, null, null, null, null, null, $mailFolder);
         }
 
         // Invia all'admin alert (se diverso dall'employee)
         if (!empty($alertEmail) && Validate::isEmail($alertEmail) && $alertEmail !== $employee->email) {
-            Mail::send($idLang, $template, $subject, $templateVars, $alertEmail,
-                null, null, null, null, null, $mailFolder, false, null, null, null, null, $mailUpParams);
+            Mail::send($idLang, $template, $subject, $templateVars, $alertEmail, null, null, null, null, null, $mailFolder);
         }
     }
 }
