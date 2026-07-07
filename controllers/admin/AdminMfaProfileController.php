@@ -85,7 +85,7 @@ class AdminMfaProfileController extends ModuleAdminController
         $code = trim((string) Tools::getValue('confirm_code', ''));
         $mfa  = EmployeeMfa::getByEmployeeId($employeeId);
 
-        if (!$mfa || !$mfa->mfa_secret || !(new MfaService())->verifyCode($mfa->mfa_secret, $code)) {
+        if (!$mfa || !$mfa->mfa_secret || !(new MfaService())->verifyCode((string) $mfa->getPlainSecret(), $code)) {
             $this->setFlash('mfa_error', 'Codice TOTP non valido. Inserisci il codice corrente per disabilitare MFA.');
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaProfile'));
         }
@@ -108,7 +108,7 @@ class AdminMfaProfileController extends ModuleAdminController
         $code = trim((string) Tools::getValue('confirm_code_regen', ''));
         $mfa  = EmployeeMfa::getByEmployeeId($employeeId);
 
-        if (!$mfa || !$mfa->mfa_secret || !(new MfaService())->verifyCode($mfa->mfa_secret, $code)) {
+        if (!$mfa || !$mfa->mfa_secret || !(new MfaService())->verifyCode((string) $mfa->getPlainSecret(), $code)) {
             $this->setFlash('mfa_error', 'Codice TOTP non valido. Inserisci il codice corrente per rigenerare.');
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaProfile'));
         }

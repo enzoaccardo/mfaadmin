@@ -47,6 +47,11 @@ class AdminMfaRecoverController extends ModuleAdminController
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminDashboard'));
         }
 
+        $mfa = EmployeeMfa::getByEmployeeId($employeeId);
+        if ($mfa && $mfa->isLocked()) {
+            $this->recoverError = $this->lockedMessage($mfa);
+        }
+
         $logo = Configuration::get('PS_LOGO');
         $this->context->smarty->assign([
             'mfa_error'       => $this->recoverError,
@@ -75,15 +80,51 @@ class AdminMfaRecoverController extends ModuleAdminController
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminLogin'));
         }
 
+        $mfa = EmployeeMfa::getByEmployeeId($employeeId);
+
+        // Blocco persistito su DB, condiviso con la verifica TOTP: non e' azzerabile
+        // aprendo una nuova sessione/tab.
+        if ($mfa && $mfa->isLocked()) {
+            $this->recoverError = $this->lockedMessage($mfa);
+            return;
+        }
+
         $code = trim((string) Tools::getValue('recovery_code', ''));
 
         if (!(new MfaService())->verifyRecoveryCode($employeeId, $code)) {
+            if ($mfa) {
+                $newAttempts = $mfa->registerFailedAttempt();
+
+                if ($newAttempts === EmployeeMfa::WARN_AT_ATTEMPT) {
+                    Mfaadmin::sendFailAlert($employeeId, 'warning', $newAttempts);
+                }
+
+                if ($mfa->isLocked()) {
+                    Mfaadmin::sendFailAlert($employeeId, 'lockout', $newAttempts);
+                    $this->recoverError = $this->lockedMessage($mfa);
+                    return;
+                }
+            }
+
             $this->recoverError = 'Codice di recupero non valido o già usato.';
             return;
         }
 
+        if ($mfa) {
+            $mfa->resetFailedAttempts();
+        }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
         Mfaadmin::setMfaVerified($employeeId);
         Tools::redirectAdmin($this->context->link->getAdminLink('AdminDashboard'));
+    }
+
+    private function lockedMessage(EmployeeMfa $mfa): string
+    {
+        $minutes = (int) ceil($mfa->getRemainingLockoutSeconds() / 60);
+
+        return 'Troppi tentativi falliti. Riprova tra ' . $minutes . ' minut' . ($minutes === 1 ? 'o' : 'i') . '.';
     }
 
     private function getEmployeeId(): int

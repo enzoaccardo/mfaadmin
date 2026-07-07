@@ -98,7 +98,7 @@ class AdminMfaSetupController extends ModuleAdminController
 
         // Salva secret e abilita MFA
         $mfa = EmployeeMfa::getOrCreate($employeeId);
-        $mfa->mfa_secret  = $secret;
+        $mfa->setPlainSecret($secret);
         $mfa->mfa_enabled = 1;
         $mfa->date_upd    = date('Y-m-d H:i:s');
         $mfa->update();

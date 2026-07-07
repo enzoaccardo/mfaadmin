@@ -1,8 +1,11 @@
 CREATE TABLE IF NOT EXISTS `PREFIX_employee_mfa` (
   `id_employee_mfa` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
   `id_employee` INT(10) UNSIGNED NOT NULL,
-  `mfa_secret` VARCHAR(64) NULL DEFAULT NULL,
+  `mfa_secret` VARCHAR(255) NULL DEFAULT NULL,
   `mfa_enabled` TINYINT(1) UNSIGNED NOT NULL DEFAULT 0,
+  `failed_attempts` TINYINT(3) UNSIGNED NOT NULL DEFAULT 0,
+  `locked_until` DATETIME NULL DEFAULT NULL,
+  `last_totp_counter` INT(10) UNSIGNED NOT NULL DEFAULT 0,
   `date_add` DATETIME NULL DEFAULT NULL,
   `date_upd` DATETIME NULL DEFAULT NULL,
   PRIMARY KEY (`id_employee_mfa`),

@@ -49,6 +49,31 @@ class MfaService
     }
 
     /**
+     * Verifica un codice TOTP al login impedendone il replay: un codice gia'
+     * accettato (o piu' vecchio dell'ultimo accettato) viene sempre rifiutato,
+     * anche se ancora entro la finestra di validita' RFC 6238.
+     */
+    public function verifyLoginCode(EmployeeMfa $mfa, string $code): bool
+    {
+        $secret = $mfa->getPlainSecret();
+        if (!$secret) {
+            return false;
+        }
+
+        $result = $this->google2fa->verifyKeyNewer($secret, $code, (int) $mfa->last_totp_counter);
+
+        if ($result === false) {
+            return false;
+        }
+
+        $mfa->last_totp_counter = (int) $result;
+        $mfa->date_upd = date('Y-m-d H:i:s');
+        $mfa->update();
+
+        return true;
+    }
+
+    /**
      * Genera 10 codici di recupero one-time per un employee.
      * I codici precedenti vengono eliminati.
      *

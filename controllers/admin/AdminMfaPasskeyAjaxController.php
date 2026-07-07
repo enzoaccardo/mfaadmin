@@ -87,14 +87,28 @@ class AdminMfaPasskeyAjaxController extends ModuleAdminController
 
     private function actionAuthVerify(): array
     {
-        $employeeId   = $this->requireEmployee();
-        $body         = $this->getJsonBody();
+        $employeeId = $this->requireEmployee();
+
+        // Blocco condiviso con TOTP/codici di recupero: un attaccante non deve poter
+        // aggirare il lockout passando semplicemente a un altro metodo di verifica.
+        $mfa = EmployeeMfa::getByEmployeeId($employeeId);
+        if ($mfa && $mfa->isLocked()) {
+            throw new RuntimeException('Troppi tentativi falliti. Riprova più tardi.');
+        }
+
+        $body           = $this->getJsonBody();
         $credentialJson = json_encode($body, JSON_THROW_ON_ERROR);
 
         if (!(new PasskeyService())->verifyAuthentication($employeeId, $credentialJson)) {
             throw new RuntimeException('Verifica passkey fallita. Riprova.');
         }
 
+        if ($mfa) {
+            $mfa->resetFailedAttempts();
+        }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
         Mfaadmin::setMfaVerified($employeeId);
 
         return ['redirect' => $this->context->link->getAdminLink('AdminDashboard')];
@@ -178,7 +192,7 @@ class AdminMfaPasskeyAjaxController extends ModuleAdminController
         }
 
         $mfa = EmployeeMfa::getOrCreate($employeeId);
-        $mfa->mfa_secret  = $secret;
+        $mfa->setPlainSecret($secret);
         $mfa->mfa_enabled = 1;
         $mfa->date_upd    = date('Y-m-d H:i:s');
         $mfa->update();

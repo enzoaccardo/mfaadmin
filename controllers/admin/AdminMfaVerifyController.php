@@ -57,12 +57,17 @@ class AdminMfaVerifyController extends ModuleAdminController
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaSetup'));
         }
 
+        if ($mfa->isLocked()) {
+            $this->verifyError = $this->lockedMessage($mfa);
+        }
+
         $passkeys = EmployeePasskey::getByEmployeeId($employeeId);
 
         $logo = Configuration::get('PS_LOGO');
         $this->context->smarty->assign([
             'mfa_error'        => $this->verifyError,
-            'has_passkeys'     => !empty($passkeys),
+            'mfa_locked'       => $mfa->isLocked(),
+            'has_passkeys'     => !empty($passkeys) && !$mfa->isLocked(),
             'recover_url'      => $this->context->link->getAdminLink('AdminMfaRecover'),
             'passkey_ajax_url' => $this->context->link->getAdminLink('AdminMfaPasskeyAjax'),
             'form_action'      => $this->context->link->getAdminLink('AdminMfaVerify'),
@@ -89,50 +94,53 @@ class AdminMfaVerifyController extends ModuleAdminController
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminLogin'));
         }
 
-        // Limite tentativi: massimo 5 per sessione per prevenire brute-force sul TOTP
-        $attemptKey = '_mfaadmin_verify_attempts_' . $employeeId;
-        $attempts   = (int) ($_SESSION[$attemptKey] ?? 0);
-
-        if ($attempts >= 5) {
-            $this->verifyError = 'Troppi tentativi falliti. Disconnettiti e riaccedi per riprovare.';
-            return;
-        }
-
-        $mfa  = EmployeeMfa::getByEmployeeId($employeeId);
-        $code = trim((string) Tools::getValue('code', ''));
+        $mfa = EmployeeMfa::getByEmployeeId($employeeId);
 
         if (!$mfa || !$mfa->mfa_secret) {
             $this->verifyError = 'MFA non configurato.';
             return;
         }
 
-        if (!(new MfaService())->verifyCode($mfa->mfa_secret, $code)) {
-            $newAttempts = $attempts + 1;
-            $_SESSION[$attemptKey] = $newAttempts;
-            $remaining = 5 - $newAttempts;
-
-            // Warning al 3° fail (una sola volta per sessione)
-            if ($newAttempts === 3 && empty($_SESSION['_mfaadmin_warned_' . $employeeId])) {
-                $_SESSION['_mfaadmin_warned_' . $employeeId] = true;
-                Mfaadmin::sendFailAlert($employeeId, 'warning', $newAttempts);
-            }
-
-            // Lockout al 5° fail (una sola volta per sessione)
-            if ($newAttempts >= 5 && empty($_SESSION['_mfaadmin_locked_' . $employeeId])) {
-                $_SESSION['_mfaadmin_locked_' . $employeeId] = true;
-                Mfaadmin::sendFailAlert($employeeId, 'lockout', $newAttempts);
-            }
-
-            $this->verifyError = $remaining > 0
-                ? 'Codice non valido o scaduto. Tentativi rimanenti: ' . $remaining . '.'
-                : 'Codice non valido. Hai esaurito i tentativi. Disconnettiti e riaccedi.';
+        // Blocco persistito su DB: non e' azzerabile aprendo una nuova sessione/tab.
+        if ($mfa->isLocked()) {
+            $this->verifyError = $this->lockedMessage($mfa);
             return;
         }
 
-        // Successo → azzera contatore, flag alert e verifica
-        unset($_SESSION[$attemptKey], $_SESSION['_mfaadmin_warned_' . $employeeId], $_SESSION['_mfaadmin_locked_' . $employeeId]);
+        $code = trim((string) Tools::getValue('code', ''));
+
+        if (!(new MfaService())->verifyLoginCode($mfa, $code)) {
+            $newAttempts = $mfa->registerFailedAttempt();
+            $remaining   = EmployeeMfa::MAX_ATTEMPTS - $newAttempts;
+
+            if ($newAttempts === EmployeeMfa::WARN_AT_ATTEMPT) {
+                Mfaadmin::sendFailAlert($employeeId, 'warning', $newAttempts);
+            }
+
+            if ($mfa->isLocked()) {
+                Mfaadmin::sendFailAlert($employeeId, 'lockout', $newAttempts);
+                $this->verifyError = $this->lockedMessage($mfa);
+                return;
+            }
+
+            $this->verifyError = 'Codice non valido o scaduto. Tentativi rimanenti: ' . $remaining . '.';
+            return;
+        }
+
+        // Successo → azzera contatore fallimenti, rigenera la sessione (mitiga session fixation) e verifica
+        $mfa->resetFailedAttempts();
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
         Mfaadmin::setMfaVerified($employeeId);
         Tools::redirectAdmin($this->context->link->getAdminLink('AdminDashboard'));
+    }
+
+    private function lockedMessage(EmployeeMfa $mfa): string
+    {
+        $minutes = (int) ceil($mfa->getRemainingLockoutSeconds() / 60);
+
+        return 'Troppi tentativi falliti. Riprova tra ' . $minutes . ' minut' . ($minutes === 1 ? 'o' : 'i') . '.';
     }
 
     private function getEmployeeId(): int
