@@ -67,7 +67,7 @@
                 digits.forEach(function (d) {
                     d.classList.toggle('is-filled', d.value !== '');
                 });
-                return /^\d{6}$/.test(hidden.value);
+                return /^\d\d\d\d\d\d$/.test(hidden.value);
             }
 
             function focusIndex(i) {
