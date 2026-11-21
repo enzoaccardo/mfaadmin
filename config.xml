@@ -2,7 +2,7 @@
 <module>
     <name>mfaadmin</name>
     <displayName><![CDATA[Admin MFA & Passkey]]></displayName>
-    <version><![CDATA[1.0.0]]></version>
+    <version><![CDATA[1.0.1]]></version>
     <description><![CDATA[Autenticazione a due fattori (TOTP + Passkey WebAuthn) per l'area admin.]]></description>
     <author><![CDATA[Vincenzo Accardo]]></author>
     <confirmUninstall><![CDATA[]]></confirmUninstall>

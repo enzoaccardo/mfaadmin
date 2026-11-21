@@ -23,7 +23,8 @@ class Mfaadmin extends Module
         'AdminMfaCodes',
         'AdminMfaPasskeyAjax',
         'AdminMfaProfile',
-        'AdminMfaConfig',
+        // AdminMfaConfig NON e' in whitelist: chi non ha superato l'MFA non deve poterlo
+        // disattivare o aggiungere controller alla lista di bypass.
         'AdminLogin',
     ];
 
@@ -47,7 +48,7 @@ class Mfaadmin extends Module
     {
         $this->name    = 'mfaadmin';
         $this->tab     = 'administration';
-        $this->version = '1.0.0';
+        $this->version = '1.0.1';
         $this->author  = 'Vincenzo Accardo';
         $this->need_instance = 0;
         $this->bootstrap     = true;
@@ -72,7 +73,41 @@ class Mfaadmin extends Module
             && $this->registerHook('displayBackOfficeHeader')
             && $this->registerHook('displayAdminAfterHeader')
             && $this->registerHook('displayAdminNavBarBeforeEnd')
-            && $this->installTabs();
+            && $this->registerHook('actionObjectProfileAddAfter')
+            && $this->installTabs()
+            && $this->grantModuleViewToProfiles();
+    }
+
+    /**
+     * Nel back office Hook::exec() salta gli hook di un modulo se il profilo dell'employee
+     * non ha il permesso "view" sul modulo (classes/Hook.php), e Module::install() lo concede
+     * solo ai profili con accesso alla gestione moduli. Senza questo il gate MFA non verrebbe
+     * mai eseguito per gli employee non SuperAdmin.
+     */
+    public function grantModuleViewToProfiles(?int $idProfile = null): bool
+    {
+        $db     = Db::getInstance();
+        $roleId = (int) $db->getValue(
+            'SELECT `id_authorization_role` FROM `' . _DB_PREFIX_ . 'authorization_role`
+             WHERE `slug` = \'ROLE_MOD_MODULE_' . pSQL(strtoupper($this->name)) . '_READ\''
+        );
+        if (!$roleId) {
+            return false;
+        }
+
+        return $db->execute(
+            'INSERT IGNORE INTO `' . _DB_PREFIX_ . 'module_access` (`id_profile`, `id_authorization_role`)
+             SELECT `id_profile`, ' . $roleId . ' FROM `' . _DB_PREFIX_ . 'profile`'
+            . ($idProfile ? ' WHERE `id_profile` = ' . (int) $idProfile : '')
+        );
+    }
+
+    /** Profili creati dopo l'installazione: stesso permesso "view", altrimenti niente gate. */
+    public function hookActionObjectProfileAddAfter(array $params): void
+    {
+        if (isset($params['object']) && Validate::isLoadedObject($params['object'])) {
+            $this->grantModuleViewToProfiles((int) $params['object']->id);
+        }
     }
 
     public function uninstall(): bool
@@ -254,8 +289,41 @@ class Mfaadmin extends Module
             Tools::redirectAdmin($context->link->getAdminLink('AdminMfaVerify'));
         }
 
-        // Setup non ancora fatto → mostra modal inline sulla pagina corrente
-        $_SESSION['_mfaadmin_show_setup_modal'] = true;
+        // Setup non ancora fatto e MFA obbligatorio → setup bloccante: nessuna altra pagina
+        // del back office finche' l'employee non ha registrato un authenticator.
+        unset($_SESSION['_mfaadmin_show_setup_modal']);
+        Tools::redirectAdmin($context->link->getAdminLink('AdminMfaSetup'));
+    }
+
+    /**
+     * Vero se l'employee ha superato il gate MFA nella richiesta corrente: MFA disattivato
+     * globalmente, oppure verificato in sessione, oppure MFA non richiesto per lui.
+     */
+    public static function isGateSatisfied(int $employeeId): bool
+    {
+        if (Configuration::get('MFAADMIN_DISABLED') || self::isMfaVerified($employeeId)) {
+            return true;
+        }
+
+        $mfa = EmployeeMfa::getByEmployeeId($employeeId);
+
+        return !Configuration::get('MFAADMIN_REQUIRED') && (!$mfa || !$mfa->mfa_enabled);
+    }
+
+    /**
+     * Un nuovo secret TOTP puo' essere registrato solo se l'employee non ne ha gia' uno
+     * attivo, oppure se ha gia' superato la verifica MFA in questa sessione. Senza questo
+     * controllo chi conosce solo la password potrebbe registrare il proprio authenticator
+     * al posto di quello del titolare.
+     */
+    public static function canEnrollSecret(int $employeeId): bool
+    {
+        $mfa = EmployeeMfa::getByEmployeeId($employeeId);
+        if (!$mfa || !$mfa->mfa_enabled || empty($mfa->mfa_secret)) {
+            return true;
+        }
+
+        return self::isMfaVerified($employeeId);
     }
 
     public function getContent(): void

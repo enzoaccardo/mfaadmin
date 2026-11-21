@@ -184,6 +184,11 @@ class AdminMfaPasskeyAjaxController extends ModuleAdminController
     {
         $employeeId = $this->requireEmployee();
 
+        // Come AdminMfaSetup: un authenticator gia' attivo si sostituisce solo dopo la verifica.
+        if (!Mfaadmin::canEnrollSecret($employeeId)) {
+            throw new RuntimeException('MFA non verificato.');
+        }
+
         $secret = $_SESSION['_mfaadmin_temp_secret'] ?? '';
         $code   = trim((string) Tools::getValue('code', ''));
 

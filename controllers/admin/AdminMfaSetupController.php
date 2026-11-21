@@ -49,6 +49,12 @@ class AdminMfaSetupController extends ModuleAdminController
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminDashboard'));
         }
 
+        // MFA gia' attivo ma non verificato in sessione: prima la verifica, poi un eventuale
+        // nuovo authenticator (altrimenti basterebbe la password per sostituirlo).
+        if (!Mfaadmin::canEnrollSecret($employeeId)) {
+            Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaVerify'));
+        }
+
         $mfaService = new MfaService();
 
         // Riusa il secret temporaneo già generato (evita QR diversi su ogni reload)
@@ -86,6 +92,10 @@ class AdminMfaSetupController extends ModuleAdminController
 
         if (!$employeeId) {
             Tools::redirectAdmin($this->context->link->getAdminLink('AdminLogin'));
+        }
+
+        if (!Mfaadmin::canEnrollSecret($employeeId)) {
+            Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaVerify'));
         }
 
         $secret = $_SESSION['_mfaadmin_temp_secret'] ?? '';

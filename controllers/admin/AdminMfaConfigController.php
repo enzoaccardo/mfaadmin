@@ -35,6 +35,12 @@ class AdminMfaConfigController extends ModuleAdminController
 
     public function postProcess(): void
     {
+        // Difesa in profondita' oltre al gate: nessuna modifica (disattivazione MFA, lista di
+        // bypass, reset di altri employee) senza aver superato l'MFA in questa sessione.
+        if (!Mfaadmin::isGateSatisfied((int) $this->context->employee->id)) {
+            Tools::redirectAdmin($this->context->link->getAdminLink('AdminMfaVerify'));
+        }
+
         if (Tools::isSubmit('submitMfaConfig')) {
             $this->processSaveConfig();
         } elseif (Tools::isSubmit('submitResetEmployee')) {
